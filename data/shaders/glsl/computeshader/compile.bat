@@ -1,0 +1,1 @@
+glslc.exe -fshader-stage=fragment texture.frag -o texture.frag.spv

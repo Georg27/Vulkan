@@ -8,5 +8,6 @@ layout (location = 0) out vec4 outFragColor;
 
 void main() 
 {
-  outFragColor = texture(samplerColor, inUV);
+	vec4 currentColor = texture(samplerColor, inUV);
+	outFragColor = vec4(currentColor.rgb, currentColor.a - 0.1f);
 }

@@ -146,6 +146,7 @@ public:
 		VK_CHECK_RESULT(vkCreateImage(device, &imageCreateInfo, nullptr, &tex->image));
 
 		vkGetImageMemoryRequirements(device, tex->image, &memReqs);
+		tex->TextureSize = memReqs.size;
 		memAllocInfo.allocationSize = memReqs.size;
 		memAllocInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 		VK_CHECK_RESULT(vkAllocateMemory(device, &memAllocInfo, nullptr, &tex->deviceMemory));
@@ -197,7 +198,7 @@ public:
 
 	void loadAssets()
 	{
-		textureColorMap.loadFromFile(getAssetPath() + "textures/vulkan_11_rgba.ktx", VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice, queue, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_LAYOUT_GENERAL);
+		textureColorMap.loadFromFile(getAssetPath() + "textures/stonefloor01_color_rgba.ktx", VK_FORMAT_R8G8B8A8_UNORM, vulkanDevice, queue, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, VK_IMAGE_LAYOUT_GENERAL);
 	}
 
 	void buildCommandBuffers()
@@ -246,8 +247,8 @@ public:
 				1, &imageMemoryBarrier);
 			vkCmdBeginRenderPass(drawCmdBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-			VkViewport viewport = vks::initializers::viewport((float)width * 0.5f, (float)height, 0.0f, 1.0f);
-			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+			VkViewport viewport1 = vks::initializers::viewport((float)width * 0.2f, (float)height * 0.2f, 0.0f, 1.0f);
+			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport1);
 
 			VkRect2D scissor = vks::initializers::rect2D(width, height, 0, 0);
 			vkCmdSetScissor(drawCmdBuffers[i], 0, 1, &scissor);
@@ -266,8 +267,9 @@ public:
 			vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics.pipelineLayout, 0, 1, &graphics.descriptorSetPostCompute, 0, NULL);
 			vkCmdBindPipeline(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics.pipeline);
 
-			viewport.x = (float)width / 2.0f;
-			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport);
+			VkViewport viewport2 = vks::initializers::viewport((float)width * 0.95f, (float)height * 0.95f, 0.0f, 1.0f);
+			//viewport2.x = (float)width / 1.1f;
+			vkCmdSetViewport(drawCmdBuffers[i], 0, 1, &viewport2);
 			vkCmdDrawIndexed(drawCmdBuffers[i], indexCount, 1, 0, 0, 0);
 
 			drawUI(drawCmdBuffers[i]);
@@ -649,6 +651,9 @@ public:
 		if (!prepared)
 			return;
 		draw();
+
+		//without copy 1500 fps with 400 fps
+		textureComputeTarget.copyThisToTexture(textureColorMap, queue);
 		if (camera.updated) {
 			updateUniformBuffers();
 		}

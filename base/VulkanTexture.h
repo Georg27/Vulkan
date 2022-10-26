@@ -41,6 +41,7 @@ class Texture
 	uint32_t              layerCount;
 	VkDescriptorImageInfo descriptor;
 	VkSampler             sampler;
+	ktx_size_t			  TextureSize;
 
 	void      updateDescriptor();
 	void      destroy();
@@ -69,6 +70,7 @@ class Texture2D : public Texture
 	    VkFilter           filter          = VK_FILTER_LINEAR,
 	    VkImageUsageFlags  imageUsageFlags = VK_IMAGE_USAGE_SAMPLED_BIT,
 	    VkImageLayout      imageLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	void copyThisToTexture(Texture2D DstTexture, VkQueue queue);
 };
 
 class Texture2DArray : public Texture

@@ -112,6 +112,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 file(GLOB SOURCE *.cpp )
 
+
+#Compile shaders
+add_custom_target(build_shaders ALL
+    COMMAND "${PROJECT_SOURCE_DIR}/data/shaders/glsl/computeshader/compile.bat"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/data/shaders/glsl/computeshader"
+)
+
+
+
 # Build all examples
 function(buildExamples)
 	foreach(EXAMPLE ${EXAMPLES})

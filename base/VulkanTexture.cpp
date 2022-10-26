@@ -10,6 +10,97 @@
 
 namespace vks
 {
+	void Texture2D::copyThisToTexture(Texture2D DstTexture, VkQueue queue) {
+
+		VkBuffer CopyBuffer;
+
+		VkBufferImageCopy region{};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset = { 0, 0, 0 };
+		region.imageExtent = { width, height, 1 };
+
+		VkImageSubresourceRange subresourceRange = {};
+		subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		subresourceRange.baseMipLevel = 0;
+		subresourceRange.levelCount = mipLevels;
+		subresourceRange.layerCount = 1;
+
+		VkCommandBuffer commandBuffer = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		VkBuffer TempBuffer;
+		VkDeviceMemory TempMemory;
+		VkMemoryRequirements memReqs;
+		VkMemoryAllocateInfo memAllocInfo = vks::initializers::memoryAllocateInfo();
+
+		VkBufferCreateInfo bufferCreateInfo = vks::initializers::bufferCreateInfo();
+		bufferCreateInfo.size = TextureSize;
+		// This buffer is used as a transfer source for the buffer copy
+		bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VK_CHECK_RESULT(vkCreateBuffer(device->logicalDevice, &bufferCreateInfo, nullptr, &TempBuffer));
+
+		// Get memory requirements for the staging buffer (alignment, memory type bits)
+		vkGetBufferMemoryRequirements(device->logicalDevice, TempBuffer, &memReqs);
+
+		memAllocInfo.allocationSize = memReqs.size;
+		// Get memory type index for a host visible buffer
+		memAllocInfo.memoryTypeIndex = device->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+		VK_CHECK_RESULT(vkAllocateMemory(device->logicalDevice, &memAllocInfo, nullptr, &TempMemory));
+		VK_CHECK_RESULT(vkBindBufferMemory(device->logicalDevice, TempBuffer, TempMemory, 0));
+
+
+
+
+
+
+
+		vks::tools::setImageLayout(
+			commandBuffer,
+			image,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			subresourceRange);
+
+		vks::tools::setImageLayout(
+			commandBuffer,
+			DstTexture.image,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			subresourceRange);
+
+		vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TempBuffer, 1, &region);
+		vkCmdCopyBufferToImage(commandBuffer, TempBuffer, DstTexture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		//transitioning back
+		vks::tools::setImageLayout(
+			commandBuffer,
+			image,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_IMAGE_LAYOUT_GENERAL,
+			subresourceRange);
+
+		vks::tools::setImageLayout(
+			commandBuffer,
+			DstTexture.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_GENERAL,
+			subresourceRange);
+
+		device->flushCommandBuffer(commandBuffer, queue);
+		vkDestroyBuffer(device->logicalDevice, TempBuffer, nullptr);
+		vkFreeMemory(device->logicalDevice, TempMemory, nullptr);
+
+	}
+
+
+
 	void Texture::updateDescriptor()
 	{
 		descriptor.sampler = sampler;
@@ -77,6 +168,7 @@ namespace vks
 
 		ktx_uint8_t *ktxTextureData = ktxTexture_GetData(ktxTexture);
 		ktx_size_t ktxTextureSize = ktxTexture_GetSize(ktxTexture);
+		TextureSize = ktxTextureSize;
 
 		// Get device properties for the requested texture format
 		VkFormatProperties formatProperties;
@@ -103,6 +195,7 @@ namespace vks
 
 			VkBufferCreateInfo bufferCreateInfo = vks::initializers::bufferCreateInfo();
 			bufferCreateInfo.size = ktxTextureSize;
+			
 			// This buffer is used as a transfer source for the buffer copy
 			bufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 			bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
