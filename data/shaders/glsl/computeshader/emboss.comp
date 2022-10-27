@@ -94,7 +94,9 @@ void main()
 
 	vec3 rgb2 = imageLoad(inputImage, ivec2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)).rgb;
 
-	vec4 rgba2 = vec4(0.003*(1-random(0.27)), random(0.27), random(0.27), 1.0);
+	if (rgb2.b > 0.6) rgb2.b = 0.01;
+	if (rgb2.b < 0.6) rgb2.b += 0.01;
+	vec4 rgba2 = vec4(rgb2, 1.0);
 
 	imageStore(resultImage, ivec2(gl_GlobalInvocationID.xy), rgba2);
 
