@@ -1,1 +1,1 @@
-glslc.exe -fshader-stage=fragment texture.frag -o texture.frag.spv
+glslc.exe -fshader-stage=compute emboss.comp -o emboss.comp.spv
