@@ -16,7 +16,7 @@
 // Lower particle count on Android for performance reasons
 #define PARTICLE_COUNT 128 * 1024
 #else
-#define PARTICLE_COUNT 256 * 1024
+#define PARTICLE_COUNT 256 * 8
 #endif
 
 class VulkanExample : public VulkanExampleBase
