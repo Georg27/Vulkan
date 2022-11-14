@@ -12,6 +12,7 @@ namespace vks
 {
 	void Texture2D::copyThisToTexture(Texture2D DstTexture, VkQueue queue) {
 
+
 		VkBuffer CopyBuffer;
 
 		VkBufferImageCopy region{};
@@ -59,8 +60,8 @@ namespace vks
 
 
 
-
-
+	
+		//set image layout
 		vks::tools::setImageLayout(
 			commandBuffer,
 			image,
@@ -75,8 +76,14 @@ namespace vks
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			subresourceRange);
 
+
+		//method 1: reduces from 1900fps to 100fps
 		vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TempBuffer, 1, &region);
 		vkCmdCopyBufferToImage(commandBuffer, TempBuffer, DstTexture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		//method 2: not working like this
+		//const VkImageCopy pRegions = {};
+		//vkCmdCopyImage(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, DstTexture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &pRegions);
 
 		//transitioning back
 		vks::tools::setImageLayout(
