@@ -796,16 +796,225 @@ public:
 
 
 
+	void prepareComputeL1()
+	{
+		// Create a ComputeL1 capable device queue
+		// The VulkanDevice::createLogicalDevice functions finds a ComputeL1 capable queue and prefers queue families that only support ComputeL1
+		// Depending on the implementation this may result in different queue family indices for Graphics and computes,
+		// requiring proper synchronization (see the memory and pipeline barriers)
+		vkGetDeviceQueue(device, ComputeL1.queueFamilyIndex, 0, &ComputeL1.queue);
+
+		// Create ComputeL1 pipeline
+		// Compute pipelines are created separate from Graphics pipelines even if they use the same queue (family index)
+
+		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+			// Binding 0 : Particle position storage buffer
+			vks::initializers::descriptorSetLayoutBinding(
+				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				VK_SHADER_STAGE_COMPUTE_BIT,
+				0),
+			// Binding 1 : Uniform buffer
+			vks::initializers::descriptorSetLayoutBinding(
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				VK_SHADER_STAGE_COMPUTE_BIT,
+				1),
+		};
+
+		VkDescriptorSetLayoutCreateInfo descriptorLayout =
+			vks::initializers::descriptorSetLayoutCreateInfo(
+				setLayoutBindings.data(),
+				static_cast<uint32_t>(setLayoutBindings.size()));
+
+		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr, &ComputeL1.descriptorSetLayout));
+
+		VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo =
+			vks::initializers::pipelineLayoutCreateInfo(
+				&ComputeL1.descriptorSetLayout,
+				1);
+
+		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pPipelineLayoutCreateInfo, nullptr, &ComputeL1.pipelineLayout));
+
+		VkDescriptorSetAllocateInfo allocInfo =
+			vks::initializers::descriptorSetAllocateInfo(
+				descriptorPool,
+				&ComputeL1.descriptorSetLayout,
+				1);
+
+		VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &ComputeL1.descriptorSet));
+
+		std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets =
+		{
+			// Binding 0 : Particle position storage buffer
+			vks::initializers::writeDescriptorSet(
+				ComputeL1.descriptorSet,
+				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+				0,
+				&ComputeL1.storageBuffer.descriptor),
+			// Binding 1 : Uniform buffer
+			vks::initializers::writeDescriptorSet(
+				ComputeL1.descriptorSet,
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				1,
+				&ComputeL1.uniformBuffer.descriptor)
+		};
+
+		vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, NULL);
+
+		// Create pipeline
+		VkComputePipelineCreateInfo computePipelineCreateInfo = vks::initializers::computePipelineCreateInfo(ComputeL1.pipelineLayout, 0);
+		computePipelineCreateInfo.stage = loadShader(getShadersPath() + "computeparticles/particle.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+		VK_CHECK_RESULT(vkCreateComputePipelines(device, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &ComputeL1.pipeline));
+
+		// Separate command pool as queue family for ComputeL1 may be different than Graphics
+		VkCommandPoolCreateInfo cmdPoolInfo = {};
+		cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		cmdPoolInfo.queueFamilyIndex = ComputeL1.queueFamilyIndex;
+		cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		VK_CHECK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &ComputeL1.commandPool));
+
+		// Create a command buffer for ComputeL1 operations
+		ComputeL1.commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, ComputeL1.commandPool);
+
+		// Semaphore for ComputeL1 & Graphics sync
+		VkSemaphoreCreateInfo semaphoreCreateInfo = vks::initializers::semaphoreCreateInfo();
+		VK_CHECK_RESULT(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &ComputeL1.semaphore));
+
+		// Build a single command buffer containing the ComputeL1 dispatch commands
+		buildComputeL1CommandBuffer();
+
+		// SRS - By reordering ComputeL1 and Graphics within draw(), the following code is no longer needed:
+		// If Graphics and ComputeL1 queue family indices differ, acquire and immediately release the storage buffer, so that the initial acquire from the Graphics command buffers are matched up properly
+		/*
+		if (Graphics.queueFamilyIndex != ComputeL1.queueFamilyIndex)
+		{
+			// Create a transient command buffer for setting up the initial buffer transfer state
+			VkCommandBuffer transferCmd = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, ComputeL1.commandPool, true);
+
+			VkBufferMemoryBarrier acquire_buffer_barrier =
+			{
+				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+				nullptr,
+				0,
+				VK_ACCESS_SHADER_WRITE_BIT,
+				Graphics.queueFamilyIndex,
+				ComputeL1.queueFamilyIndex,
+				ComputeL1.storageBuffer.buffer,
+				0,
+				ComputeL1.storageBuffer.size
+			};
+			vkCmdPipelineBarrier(
+				transferCmd,
+				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				0,
+				0, nullptr,
+				1, &acquire_buffer_barrier,
+				0, nullptr);
+
+			VkBufferMemoryBarrier release_buffer_barrier =
+			{
+				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+				nullptr,
+				VK_ACCESS_SHADER_WRITE_BIT,
+				0,
+				ComputeL1.queueFamilyIndex,
+				Graphics.queueFamilyIndex,
+				ComputeL1.storageBuffer.buffer,
+				0,
+				ComputeL1.storageBuffer.size
+			};
+			vkCmdPipelineBarrier(
+				transferCmd,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+				0,
+				0, nullptr,
+				1, &release_buffer_barrier,
+				0, nullptr);
+
+			vulkanDevice->flushCommandBuffer(transferCmd, ComputeL1.queue, ComputeL1.commandPool);
+		}
+		*/
+	}
+
+	void buildComputeL1CommandBuffer()
+	{
+		VkCommandBufferBeginInfo cmdBufInfo = vks::initializers::commandBufferBeginInfo();
+
+		VK_CHECK_RESULT(vkBeginCommandBuffer(ComputeL1.commandBuffer, &cmdBufInfo));
+
+		// Compute particle movement
+
+		// Add memory barrier to ensure that the (Graphics) vertex shader has fetched attributes before ComputeL1 starts to write to the buffer
+		if (Graphics.queueFamilyIndex != ComputeL1.queueFamilyIndex)
+		{
+			VkBufferMemoryBarrier buffer_barrier =
+			{
+				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+				nullptr,
+				0,
+				VK_ACCESS_SHADER_WRITE_BIT,
+				Graphics.queueFamilyIndex,
+				ComputeL1.queueFamilyIndex,
+				ComputeL1.storageBuffer.buffer,
+				0,
+				ComputeL1.storageBuffer.size
+			};
+
+			vkCmdPipelineBarrier(
+				ComputeL1.commandBuffer,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				0,
+				0, nullptr,
+				1, &buffer_barrier,
+				0, nullptr);
+		}
+
+		// Dispatch the ComputeL1 job
+		vkCmdBindPipeline(ComputeL1.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, ComputeL1.pipeline);
+		vkCmdBindDescriptorSets(ComputeL1.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, ComputeL1.pipelineLayout, 0, 1, &ComputeL1.descriptorSet, 0, 0);
+		vkCmdDispatch(ComputeL1.commandBuffer, PARTICLE_COUNT / 256, 1, 1);
+
+		// Add barrier to ensure that ComputeL1 shader has finished writing to the buffer
+		// Without this the (rendering) vertex shader may display incomplete results (partial data from last frame)
+		if (Graphics.queueFamilyIndex != ComputeL1.queueFamilyIndex)
+		{
+			VkBufferMemoryBarrier buffer_barrier =
+			{
+				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+				nullptr,
+				VK_ACCESS_SHADER_WRITE_BIT,
+				0,
+				ComputeL1.queueFamilyIndex,
+				Graphics.queueFamilyIndex,
+				ComputeL1.storageBuffer.buffer,
+				0,
+				ComputeL1.storageBuffer.size
+			};
+
+			vkCmdPipelineBarrier(
+				ComputeL1.commandBuffer,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+				0,
+				0, nullptr,
+				1, &buffer_barrier,
+				0, nullptr);
+		}
+
+		vkEndCommandBuffer(ComputeL1.commandBuffer);
+	}
 
 
 
 
 	void draw()
 	{
-		// Wait for rendering finished
+		// Wait for rendering to finish
 		VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
-		// Submit compute commands
+		// Submit compute L0 commands
 		VkSubmitInfo computeSubmitInfo = vks::initializers::submitInfo();
 		computeSubmitInfo.commandBufferCount = 1;
 		computeSubmitInfo.pCommandBuffers = &ComputeL0.commandBuffer;
@@ -852,6 +1061,7 @@ public:
 		setupDescriptorSet();
 		prepareGraphics();
 		prepareCompute();
+		prepareComputeL1();
 		buildCommandBuffers();
 		prepared = true;
 	}
