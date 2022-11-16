@@ -284,6 +284,8 @@ public:
 
 			VK_CHECK_RESULT(vkBeginCommandBuffer(drawCmdBuffers[i], &cmdBufInfo));
 
+			// ONLY USED FOR SIGNALING THE CHANGE IN THE USAGE
+
 			// Image memory barrier to make sure that compute shader writes are finished before sampling from the texture
 			VkImageMemoryBarrier imageMemoryBarrier = {};
 			imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -882,59 +884,7 @@ public:
 		// Build a single command buffer containing the ComputeL1 dispatch commands
 		buildComputeL1CommandBuffer();
 
-		// SRS - By reordering ComputeL1 and Graphics within draw(), the following code is no longer needed:
-		// If Graphics and ComputeL1 queue family indices differ, acquire and immediately release the storage buffer, so that the initial acquire from the Graphics command buffers are matched up properly
-		/*
-		if (Graphics.queueFamilyIndex != ComputeL1.queueFamilyIndex)
-		{
-			// Create a transient command buffer for setting up the initial buffer transfer state
-			VkCommandBuffer transferCmd = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, ComputeL1.commandPool, true);
-
-			VkBufferMemoryBarrier acquire_buffer_barrier =
-			{
-				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-				nullptr,
-				0,
-				VK_ACCESS_SHADER_WRITE_BIT,
-				Graphics.queueFamilyIndex,
-				ComputeL1.queueFamilyIndex,
-				ComputeL1.storageBuffer.buffer,
-				0,
-				ComputeL1.storageBuffer.size
-			};
-			vkCmdPipelineBarrier(
-				transferCmd,
-				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				0,
-				0, nullptr,
-				1, &acquire_buffer_barrier,
-				0, nullptr);
-
-			VkBufferMemoryBarrier release_buffer_barrier =
-			{
-				VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-				nullptr,
-				VK_ACCESS_SHADER_WRITE_BIT,
-				0,
-				ComputeL1.queueFamilyIndex,
-				Graphics.queueFamilyIndex,
-				ComputeL1.storageBuffer.buffer,
-				0,
-				ComputeL1.storageBuffer.size
-			};
-			vkCmdPipelineBarrier(
-				transferCmd,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-				0,
-				0, nullptr,
-				1, &release_buffer_barrier,
-				0, nullptr);
-
-			vulkanDevice->flushCommandBuffer(transferCmd, ComputeL1.queue, ComputeL1.commandPool);
-		}
-		*/
+		
 	}
 
 	void buildComputeL1CommandBuffer()
@@ -944,6 +894,8 @@ public:
 		VK_CHECK_RESULT(vkBeginCommandBuffer(ComputeL1.commandBuffer, &cmdBufInfo));
 
 		// Compute particle movement
+
+		//IS ONLY THERE FOR TELLING THE DRIVER THAT THE USAGE HAS CHANGED
 
 		// Add memory barrier to ensure that the (Graphics) vertex shader has fetched attributes before ComputeL1 starts to write to the buffer
 		if (Graphics.queueFamilyIndex != ComputeL1.queueFamilyIndex)
@@ -960,7 +912,7 @@ public:
 				0,
 				ComputeL1.storageBuffer.size
 			};
-
+		
 			vkCmdPipelineBarrier(
 				ComputeL1.commandBuffer,
 				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -1024,10 +976,23 @@ public:
 		computeSubmitInfo.signalSemaphoreCount = 1;
 		computeSubmitInfo.pSignalSemaphores = &ComputeL0.semaphore;
 		VK_CHECK_RESULT(vkQueueSubmit(ComputeL0.queue, 1, &computeSubmitInfo, VK_NULL_HANDLE));	
-		VulkanExampleBase::prepareFrame();
+
+		// Submit compute L1 commands
+		VkSubmitInfo computeSubmitInfoL1 = vks::initializers::submitInfo();
+		computeSubmitInfoL1.commandBufferCount = 1;
+		computeSubmitInfoL1.pCommandBuffers = &ComputeL1.commandBuffer;
+		computeSubmitInfoL1.waitSemaphoreCount = 1;
+		computeSubmitInfoL1.pWaitSemaphores = &ComputeL0.semaphore;
+		computeSubmitInfoL1.pWaitDstStageMask = &waitStageMask;
+		computeSubmitInfoL1.signalSemaphoreCount = 1;
+		computeSubmitInfoL1.pSignalSemaphores = &ComputeL1.semaphore;
+		VK_CHECK_RESULT(vkQueueSubmit(ComputeL1.queue, 1, &computeSubmitInfo, VK_NULL_HANDLE));
+
+
+		VulkanExampleBase::prepareFrame(); //while L1 computes aquiring next swapchain images
 
 		VkPipelineStageFlags graphicsWaitStageMasks[] = { VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-		VkSemaphore graphicsWaitSemaphores[] = { ComputeL0.semaphore, semaphores.presentComplete };
+		VkSemaphore graphicsWaitSemaphores[] = { ComputeL1.semaphore, semaphores.presentComplete };
 		VkSemaphore graphicsSignalSemaphores[] = { Graphics.semaphore, semaphores.renderComplete };
 
 		// Submit graphics commands
@@ -1040,7 +1005,7 @@ public:
 		submitInfo.pSignalSemaphores = graphicsSignalSemaphores;
 		VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
 
-		VulkanExampleBase::submitFrame();
+		VulkanExampleBase::submitFrame(); //graphics command finished and submitting swapchain image to surface 
 	}
 
 	void prepare()
