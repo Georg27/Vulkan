@@ -67,6 +67,7 @@ public:
 	// Resources for the compute part of the example
 	struct Compute {
 		uint32_t queueFamilyIndex;					// Used to check if compute and graphics queue families differ and require additional barriers
+		vks::Buffer storageBuffer;					// (Shader) storage buffer object containing the particles
 		VkQueue queue;								// Separate queue for compute commands (queue family may differ from the one used for graphics)
 		VkCommandPool commandPool;					// Use a separate command pool (queue family may differ from the one used for graphics)
 		VkCommandBuffer commandBuffer;				// Command buffer storing the dispatch commands and barriers
@@ -99,6 +100,12 @@ public:
 		} ubo;
 	} ComputeL1;
 
+
+
+	struct CA {
+		glm::vec2 dir;
+		float energy;
+	};
 
 
 	// SSBO particle declaration
@@ -425,7 +432,7 @@ public:
 			// Graphics pipelines image samplers for displaying compute output image
 			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6),
 			// Compute pipelines uses a storage image for image reads and writes
-			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6),
+			vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5),
 		};
 		VkDescriptorPoolCreateInfo descriptorPoolInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 4);
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
@@ -590,7 +597,7 @@ public:
 		VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &ComputeL0.descriptorSet));
 		std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
 			vks::initializers::writeDescriptorSet(ComputeL0.descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0, &TextureExt.descriptor),
-			vks::initializers::writeDescriptorSet(ComputeL0.descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &TextureL0.descriptor)
+			vks::initializers::writeDescriptorSet(ComputeL0.descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &TextureL0.descriptor),
 		};
 		vkUpdateDescriptorSets(device, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, NULL);
 
@@ -691,6 +698,11 @@ public:
 
 
 	}
+
+
+	
+
+
 
 	// Setup and fill the ComputeL1 shader storage buffers containing the particles
 	void prepareStorageBuffers()
